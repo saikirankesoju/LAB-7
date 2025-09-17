@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Banking App (Design Patterns)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <style>
+        :root {
+            --primary-color: #0077b6;
+            --success-color: #2a9d8f;
+            --error-color: #e76f51;
+            --bg-color: #f0f2f5;
+            --card-bg-color: #ffffff;
+            --text-color: #333;
+            --text-light: #777;
+            --border-color: #e0e0e0;
+            --shadow: 0 8px 20px rgba(0, 0, 0, 0.07);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Poppins', sans-serif; }
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        .app-container {
+            width: 100%;
+            max-width: 500px;
+            background-color: var(--card-bg-color);
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+            padding: 2rem;
+        }
+        .header { text-align: center; margin-bottom: 1.5rem; }
+        .header h1 { font-size: 1.8rem; color: var(--primary-color); }
+        .balance-section { text-align: center; margin-bottom: 1.5rem; }
+        .balance-section .label { color: var(--text-light); }
+        .balance-section .amount { font-size: 2.5rem; font-weight: 600; color: var(--primary-color); }
+        .controls, .interest-controls { display: flex; gap: 0.75rem; margin-bottom: 1rem; }
+        input, select {
+            flex-grow: 1; padding: 0.75rem; border: 1px solid var(--border-color);
+            border-radius: 8px; font-size: 1rem; background-color: #fafafa;
+        }
+        .btn {
+            padding: 0.75rem 1rem; border: none; border-radius: 8px;
+            font-size: 0.9rem; font-weight: 600; cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .btn i { margin-right: 5px; }
+        .btn-deposit { background-color: var(--success-color); color: white; }
+        .btn-withdraw { background-color: var(--error-color); color: white; }
+        .btn-undo { background-color: #6c757d; color: white; }
+        .btn-interest { background-color: var(--primary-color); color: white; }
+        .btn:hover { transform: translateY(-2px); opacity: 0.9; }
+        .log-section { margin-top: 1.5rem; }
+        .log-section h2 { font-size: 1.1rem; color: var(--text-light); border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; margin-bottom: 0.5rem; }
+        #log-box { height: 200px; overflow-y: auto; padding: 0.5rem; background-color: #f8f9fa; border-radius: 8px; }
+        .log-entry { font-size: 0.85rem; padding: 0.25rem 0; color: #555; }
+        .log-entry.command { color: #005f73; font-style: italic; }
+        .log-entry.observer { color: #d62828; }
+        .log-entry.strategy { color: #6a040f; font-weight: 600; }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        <div class="header">
+            <h1><i class="fas fa-university"></i> Advanced Banking System</h1>
+        </div>
+
+        <div class="balance-section">
+            <div class="label">Current Balance</div>
+            <div class="amount" id="balanceAmount">₹1000.00</div>
+        </div>
+
+        <div class="controls">
+            <input type="number" id="amountInput" placeholder="Amount" min="0">
+            <button class="btn btn-deposit" id="depositBtn"><i class="fas fa-plus"></i> Deposit</button>
+            <button class="btn btn-withdraw" id="withdrawBtn"><i class="fas fa-minus"></i> Withdraw</button>
+            <button class="btn btn-undo" id="undoBtn"><i class="fas fa-undo"></i> Undo</button>
+        </div>
+
+        <div class="interest-controls">
+            <select id="strategySelector">
+                <option value="savings">Savings (4.5%)</option>
+                <option value="fixed">Fixed Deposit (7.2%)</option>
+                <option value="current">Current (No Interest)</option>
+            </select>
+            <button class="btn btn-interest" id="interestBtn">Apply Interest</button>
+        </div>
+
+        <div class="log-section">
+            <h2><i class="fas fa-stream"></i> System Log & Notifications</h2>
+            <div id="log-box"></div>
+        </div>
+    </div>
+
+    <script>
+        // --- UTILITY FOR LOGGING ---
+        const logBox = document.getElementById('log-box');
+        const log = (message, type = '') => {
+            const entry = document.createElement('div');
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            entry.className = `log-entry ${type}`;
+            logBox.prepend(entry);
+        };
+
+        // ===============================================
+        // ## 1. OBSERVER PATTERN ##
+        // ===============================================
+
+        // The Subject (or Publisher)
+        class AccountSubject {
+            constructor() {
+                this.observers = [];
+            }
+            attach(observer) {
+                this.observers.push(observer);
+            }
+            detach(observer) {
+                this.observers = this.observers.filter(obs => obs !== observer);
+            }
+            notify(data) {
+                this.observers.forEach(observer => observer.update(data));
+            }
+        }
+
+        // Concrete Observers (or Subscribers)
+        class SmsNotifier {
+            update(data) {
+                log(`📲 SMS: Your account was updated. Transaction: ${data.type} of ₹${data.amount}. New Balance: ₹${data.balance.toFixed(2)}`, 'observer');
+            }
+        }
+        class EmailNotifier {
+            update(data) {
+                log(`📧 EMAIL: Notification of transaction. Type: ${data.type}, Amount: ₹${data.amount}.`, 'observer');
+            }
+        }
+
+        // ===============================================
+        // ## 2. STRATEGY PATTERN ##
+        // ===============================================
+
+        // The Strategy Interface
+        class InterestStrategy {
+            calculateInterest(balance) {
+                throw new Error("This method must be overridden!");
+            }
+        }
+
+        // Concrete Strategies
+        class SavingsInterest extends InterestStrategy {
+            calculateInterest(balance) {
+                const interest = balance * 0.045;
+                log(`📈 STRATEGY: Calculating Savings interest (4.5%): ₹${interest.toFixed(2)}`, 'strategy');
+                return interest;
+            }
+        }
+        class FixedDepositInterest extends InterestStrategy {
+            calculateInterest(balance) {
+                const interest = balance * 0.072;
+                log(`📈 STRATEGY: Calculating Fixed Deposit interest (7.2%): ₹${interest.toFixed(2)}`, 'strategy');
+                return interest;
+            }
+        }
+        class NoInterest extends InterestStrategy {
+            calculateInterest(balance) {
+                log(`📈 STRATEGY: No interest for Current Account.`, 'strategy');
+                return 0;
+            }
+        }
+
+        // ===============================================
+        // ## 3. COMMAND PATTERN ##
+        // ===============================================
+
+        // The Command Interface
+        class TransactionCommand {
+            constructor(account, amount) {
+                this.account = account;
+                this.amount = amount;
+            }
+            execute() { throw new Error("Execute must be overridden!"); }
+            undo() { throw new Error("Undo must be overridden!"); }
+        }
+
+        // Concrete Commands
+        class DepositCommand extends TransactionCommand {
+            execute() {
+                this.account.deposit(this.amount);
+            }
+            undo() {
+                this.account.withdraw(this.amount);
+            }
+        }
+
+        class WithdrawCommand extends TransactionCommand {
+            execute() {
+                this.account.withdraw(this.amount);
+            }
+            undo() {
+                this.account.deposit(this.amount);
+            }
+        }
+        
+        // The Invoker
+        class TransactionManager {
+            constructor() {
+                this.history = [];
+            }
+            execute(command) {
+                log(`⚙️ COMMAND: Executing ${command.constructor.name}...`, 'command');
+                command.execute();
+                this.history.push(command);
+            }
+            undo() {
+                if (this.history.length > 0) {
+                    const lastCommand = this.history.pop();
+                    log(`⚙️ COMMAND: Undoing ${lastCommand.constructor.name}...`, 'command');
+                    lastCommand.undo();
+                } else {
+                    log('No transactions to undo.', 'command');
+                }
+            }
+        }
+
+        // ===============================================
+        // ## THE RECEIVER & CONTEXT CLASS: Account ##
+        // ===============================================
+        class Account extends AccountSubject {
+            constructor(accountNumber, initialBalance) {
+                super(); // Initializes the observer list
+                this.accountNumber = accountNumber;
+                this.balance = initialBalance;
+                this.interestStrategy = new SavingsInterest(); // Default strategy
+            }
+            
+            setInterestStrategy(strategy) {
+                this.interestStrategy = strategy;
+                log(`✅ STRATEGY: Account interest strategy set to ${strategy.constructor.name}.`);
+            }
+
+            deposit(amount) {
+                this.balance += amount;
+                this.updateUI();
+                this.notify({ type: 'DEPOSIT', amount: amount, balance: this.balance });
+            }
+
+            withdraw(amount) {
+                if (this.balance >= amount) {
+                    this.balance -= amount;
+                    this.updateUI();
+                    this.notify({ type: 'WITHDRAW', amount: amount, balance: this.balance });
+                } else {
+                    log("❌ Error: Insufficient funds.");
+                }
+            }
+            
+            applyInterest() {
+                const interest = this.interestStrategy.calculateInterest(this.balance);
+                this.deposit(interest); // Applying interest is a form of deposit
+            }
+
+            updateUI() {
+                document.getElementById('balanceAmount').textContent = `₹${this.balance.toFixed(2)}`;
+            }
+        }
+
+
+        // ===============================================
+        // ## APPLICATION SETUP & DOM EVENT LISTENERS ##
+        // ===============================================
+        document.addEventListener('DOMContentLoaded', () => {
+            // 1. Create core objects
+            const account = new Account('ACC123', 1000);
+            const transactionManager = new TransactionManager();
+
+            // 2. Create and attach observers
+            const sms = new SmsNotifier();
+            const email = new EmailNotifier();
+            account.attach(sms);
+            account.attach(email);
+            
+            // 3. Get DOM Elements
+            const amountInput = document.getElementById('amountInput');
+            const depositBtn = document.getElementById('depositBtn');
+            const withdrawBtn = document.getElementById('withdrawBtn');
+            const undoBtn = document.getElementById('undoBtn');
+            const interestBtn = document.getElementById('interestBtn');
+            const strategySelector = document.getElementById('strategySelector');
+            
+            // 4. Initial UI update
+            account.updateUI();
+            log('🏦 System Initialized. Account created with ₹1000.');
+
+            // 5. Wire up event listeners
+            depositBtn.addEventListener('click', () => {
+                const amount = parseFloat(amountInput.value);
+                if (!isNaN(amount) && amount > 0) {
+                    const command = new DepositCommand(account, amount);
+                    transactionManager.execute(command);
+                    amountInput.value = '';
+                }
+            });
+
+            withdrawBtn.addEventListener('click', () => {
+                const amount = parseFloat(amountInput.value);
+                if (!isNaN(amount) && amount > 0) {
+                    const command = new WithdrawCommand(account, amount);
+                    transactionManager.execute(command);
+                    amountInput.value = '';
+                }
+            });
+            
+            undoBtn.addEventListener('click', () => {
+                transactionManager.undo();
+            });
+            
+            strategySelector.addEventListener('change', () => {
+                const strategies = {
+                    'savings': new SavingsInterest(),
+                    'fixed': new FixedDepositInterest(),
+                    'current': new NoInterest()
+                };
+                account.setInterestStrategy(strategies[strategySelector.value]);
+            });
+            
+            interestBtn.addEventListener('click', () => {
+                account.applyInterest();
+            });
+        });
+    </script>
+</body>
+</html>
